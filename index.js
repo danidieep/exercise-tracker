@@ -11,13 +11,21 @@ mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 app.use(bodyParser.json({ limit: '50mb' }));
 
-const userSchema = new mongoose.Schema({
-  username:{type: String, required: true},
-  count:{type: Number, default: 1},
-  log: []
+
+
+const ExerciseSchema = new mongoose.Schema({
+  description: {type:String, required: true},
+  duration: {type:Number, required: true},
+  date: String
 })
 
-const User = mongoose.model('User', userSchema)
+const UserSchema = new mongoose.Schema({
+  username:{type: String, required: true},
+  log: [ExerciseSchema]
+})
+
+const User = mongoose.model('User', UserSchema)
+const Exercise = mongoose.model('Exercise', ExerciseSchema)
 
 app.use(cors())
 app.use(express.static('public')) 
@@ -28,9 +36,9 @@ app.get('/', (req, res) => {
 app.get('/api/users', async (req, res, next)=>{
   try {
     let users = await User.find()
-    res.json(users)
+    return res.json(users)
   } catch (error) {
-    res.send(error)
+    return res.send(error)
   }
 })
 
@@ -42,48 +50,84 @@ app.post('/api/users', async (req, res, next)=>{
       if(err) console.log(err)
       obj.username = done.username
       obj._id = done._id
-      res.json(obj)
+      return res.json(obj)
     })
   } catch (error) {
-    res.send(error)
+    return res.send(error)
   }
 }) 
 
 app.post('/api/users/:id/exercises', async (req, res, next)=>{
   let {id} = req.params
   let {description, duration, date} = req.body
-  let newLog = {
+  let responseObject = {}
+
+  const newExercise = new Exercise({
     description,
     duration,
-    date: date ? date : new Date().toLocaleDateString('en-US')
+    date
+  })
+
+  if(newExercise.data === ''){
+    newExercise.date = new Date().toISOString().substring(0,10)
   }
-  try {
-    let userFound = await User.findById(id, (err, done)=>{
-      if(err) console.log(err)
-      console.log(done, "SOY DONE ")
-      done.log = [...done.log, newLog]
-      done.count+=1
-      done.save((err, data)=>{
-        if(err) console.log(err)
-        res.json(data)
-      })
-    })
-  } catch (error) {
-    res.send(error)
-  }
+
+  User.findByIdAndUpdate(id, {$push:{log:newExercise}},{new:true},(err, updated)=>{
+    if(!err){
+        responseObject._id=updated.id,
+        responseObject.username=updated.username,
+        responseObject.description= newExercise.description,
+        responseObject.duration=newExercise.duration,
+        responseObject.date=newExercise.date
+        responseObject = responseObject.toJSON()
+        responseObject.count  = updated.log.length
+      res.json(
+        responseObject
+      )
+    }
+  })
+  // if(typeof description !== 'string') return res.json({error: "la descripcion tiene que ser una cadena"})
+  // if(typeof duration !== 'number') return res.json({error: "la descripcion tiene que ser un numero"})
+  // let dateGive = new Date(Date.parse(date))
+  // dateGive.setMinutes(dateGive.getMinutes() + dateGive.getTimezoneOffset())
+  // console.log(dateGive)
+  // if(dateGive && dateGive.toString() == "Invalid Date") return res.json({error: "la descripcion tiene que ser una cadena"})
+  // let todayDate = new Date()
+  // let newLog = {
+  //   description,
+  //   duration: Number(duration),
+  //   date: date ? dateGive.toDateString() : todayDate.toDateString()
+  // }
+  // let responseObject = {
+  //   _id,
+  //   username: '',
+  //   description,
+  //   duration: Number(duration),
+  //   date: newLog.date
+  // }
+
+  //   let user = await User.findById(_id)
+  //   user.count+=1
+  //   user.log.push(newLog)
+  //   responseObject.username = user.username
+  //   let finish = await user.save()
+  //   res.json(responseObject)
 })
+
+
 app.get('/api/users/:id/logs', async (req, res, next)=>{
   let {id} = req.params
+  let responseObject = {}
   try {
-    let userFound = await User.findById(id)
-    res.json(userFound)
+    let userFound = await User.findById(id).select({__v:0})
+     res.send(userFound)
   } catch (error) {
-    res.send(error)
+    return res.send(error)
   }
 })
 
 
-
+ 
 const listener = app.listen(process.env.PORT || 3000, () => {
   console.log('Your app is listening on port ' + listener.address().port)
 })
