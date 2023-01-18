@@ -50,7 +50,7 @@ app.post('/api/users', async (req, res, next)=>{
       if(err) console.log(err)
       obj.username = done.username
       obj._id = done._id
-      return res.json(obj)
+      return res.json(obj) 
     })
   } catch (error) {
     return res.send(error)
@@ -60,16 +60,25 @@ app.post('/api/users', async (req, res, next)=>{
 app.post('/api/users/:id/exercises', async (req, res, next)=>{
   let {id} = req.params
   let {description, duration, date} = req.body
+
   let responseObject = {}
+  let dateGive = new Date(Date.parse(date))
+  dateGive.setMinutes(dateGive.getMinutes() + dateGive.getTimezoneOffset())
+
 
   const newExercise = new Exercise({
+    date,
     description,
-    duration,
-    date
+    duration
   })
+  if(dateGive && dateGive.toString() == "Invalid Date"){
+    newExercise.date = ''
+  }
 
-  if(newExercise.data === ''){
-    newExercise.date = new Date().toISOString().substring(0,10)
+  if(newExercise.date === ''){
+    newExercise.date = new Date().toDateString()
+  }else{
+    newExercise.date = dateGive.toDateString()
   }
 
   User.findByIdAndUpdate(id, {$push:{log:newExercise}},{new:true},(err, updated)=>{
@@ -79,8 +88,7 @@ app.post('/api/users/:id/exercises', async (req, res, next)=>{
         responseObject.description= newExercise.description,
         responseObject.duration=newExercise.duration,
         responseObject.date=newExercise.date
-        responseObject = responseObject.toJSON()
-        responseObject.count  = updated.log.length
+        // responseObject = responseObject.toJSON()
       res.json(
         responseObject
       )
@@ -91,7 +99,6 @@ app.post('/api/users/:id/exercises', async (req, res, next)=>{
   // let dateGive = new Date(Date.parse(date))
   // dateGive.setMinutes(dateGive.getMinutes() + dateGive.getTimezoneOffset())
   // console.log(dateGive)
-  // if(dateGive && dateGive.toString() == "Invalid Date") return res.json({error: "la descripcion tiene que ser una cadena"})
   // let todayDate = new Date()
   // let newLog = {
   //   description,
@@ -117,10 +124,39 @@ app.post('/api/users/:id/exercises', async (req, res, next)=>{
 
 app.get('/api/users/:id/logs', async (req, res, next)=>{
   let {id} = req.params
-  let responseObject = {}
+  let {limit, from, to} = req.query
+  let response = {}
   try {
     let userFound = await User.findById(id).select({__v:0})
-     res.send(userFound)
+    let count = userFound.log.length
+    response._id = userFound._id
+    response.username = userFound.username
+    response.log = userFound.log
+
+    if(from || to){
+      let fromDate = new Date(0)
+      let toDate = new Date()
+
+      if(from){
+        fromDate = new Date(from)
+      }
+      if(to){
+        toDate = new Date(to)
+      }
+      fromDate = fromDate.getTime()
+      toDate = toDate.getTime()
+
+      response.log = response.log.filter((e)=>{
+        let sessionDate = new Date(e.date).getTime()
+
+        return sessionDate >= fromDate && sessionDate <= toDate
+      })
+    }
+    if(limit){
+      response.log = response.log.slice(0, limit)
+    }
+    response.count = count
+    res.json(response)
   } catch (error) {
     return res.send(error)
   }
